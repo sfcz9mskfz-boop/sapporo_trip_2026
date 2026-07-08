@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/import-google-list.js": {
+      "maxDuration": 120
+    }
+  }
+}
