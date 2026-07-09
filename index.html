@@ -1116,7 +1116,7 @@ html.fx-popup-open, body.fx-popup-open{overflow:hidden}
       These are seat-limited packaged tours, so <b>advance online booking is required</b>. In peak season (Jul-Aug), book 1-2 weeks ahead; most sites require full payment at booking.</p>
 <p><b>⑤ Event tickets (Bankei fireworks, etc.)</b><br/>
       Little to no walk-up sales. <b>Advance online booking is essential</b> — buy as soon as tickets go on sale.</p>
-<p style="color:var(--muted);font-size:11.5px;margin-top:10px;">※ Fares and booking methods can change seasonally — please confirm on each official site before your trip.</p></div></div></details><details class="saved-lists-manager" id="savedListManager"><summary><div class="saved-list-trigger"><span class="saved-list-icon">★</span><span class="saved-list-title"><span class="lang lang-ko">Google 저장 리스트</span><span class="lang lang-en">Google saved lists</span></span><span class="saved-list-count" id="savedListCount">0</span><button aria-label="API 설정 / API setup" class="api-gear-btn" id="toggleImportApiSetup" title="API 설정" type="button">⚙️</button></div></summary><div class="saved-list-body"><textarea class="saved-list-textarea" id="savedListRaw" placeholder="Google Maps shared list link 붙여넣기" rows="3"></textarea><div class="saved-list-actions"><button id="importGoogleSharedList" type="button"><span class="lang lang-ko">리스트 가져오기</span><span class="lang lang-en">Import list</span></button></div><div class="import-api-setup" hidden="hidden" id="importApiSetup"><div class="import-api-help"><span class="lang lang-ko">기본값은 Render에 배포한 자체 스크래퍼 API야. 따로 붙여넣지 않아도 이 주소를 사용해.</span><span class="lang lang-en">Default is your self-hosted Render scraper API. The app uses this URL automatically.</span></div><input class="saved-list-input" id="importApiEndpoint" placeholder="https://gmap-shared-list-scraper.onrender.com/api/import-google-list" type="text" value="https://gmap-shared-list-scraper.onrender.com/api/import-google-list"/></div><div class="saved-list-rows" id="savedListRows"></div><div class="saved-list-all" id="savedListAllPlaces"></div><div class="saved-list-status" id="savedListStatus"><span class="lang lang-ko">추가한 리스트가 아직 없어요.</span><span class="lang lang-en">No saved lists added yet.</span></div></div></details>
+<p style="color:var(--muted);font-size:11.5px;margin-top:10px;">※ Fares and booking methods can change seasonally — please confirm on each official site before your trip.</p></div></div></details><details class="saved-lists-manager" id="savedListManager"><summary><div class="saved-list-trigger"><span class="saved-list-icon">★</span><span class="saved-list-title"><span class="lang lang-ko">Google 저장 리스트</span><span class="lang lang-en">Google saved lists</span></span><span class="saved-list-count" id="savedListCount">0</span><button aria-label="API 설정 / API setup" class="api-gear-btn" id="toggleImportApiSetup" title="API 설정" type="button">⚙️</button></div></summary><div class="saved-list-body"><textarea class="saved-list-textarea" id="savedListRaw" placeholder="Google Maps shared list link 붙여넣기" rows="3"></textarea><div class="saved-list-actions"><button id="importGoogleSharedList" type="button"><span class="lang lang-ko">리스트 가져오기</span><span class="lang lang-en">Import list</span></button></div><div class="import-api-setup" hidden="hidden" id="importApiSetup"><div class="import-api-help"><span class="lang lang-ko">기본값은 Render에 배포한 자체 스크래퍼 API야. 따로 붙여넣지 않아도 이 주소를 사용해.</span><span class="lang lang-en">Default is your Cloudflare Worker → ParseForge API. The app uses this URL automatically.</span></div><input class="saved-list-input" id="importApiEndpoint" placeholder="https://gmap-scraper.sfcz9mskfz.workers.dev/api/import-google-list" type="text" value="https://gmap-scraper.sfcz9mskfz.workers.dev/api/import-google-list"/></div><div class="saved-list-rows" id="savedListRows"></div><div class="saved-list-all" id="savedListAllPlaces"></div><div class="saved-list-status" id="savedListStatus"><span class="lang lang-ko">추가한 리스트가 아직 없어요.</span><span class="lang lang-en">No saved lists added yet.</span></div></div></details>
 <div class="content-grid">
 <section class="map-card">
 <div class="section-head">
@@ -3708,7 +3708,7 @@ html.fx-popup-open, body.fx-popup-open{overflow:hidden}
 
   /* v55: direct Google Maps shared-list import via self-hosted Render scraper API */
   var SHARED_LIST_IMPORT_ENDPOINT_KEY = 'sapporo-trip-v43-shared-list-import-endpoint';
-  var DEFAULT_SHARED_LIST_IMPORT_ENDPOINT = 'https://gmap-shared-list-scraper.onrender.com/api/import-google-list';
+  var DEFAULT_SHARED_LIST_IMPORT_ENDPOINT = 'https://gmap-scraper.sfcz9mskfz.workers.dev/api/import-google-list';
 
   function getImportEndpoint(){
     var input = document.getElementById('importApiEndpoint');
@@ -5346,11 +5346,11 @@ html.fx-popup-open, body.fx-popup-open{overflow:hidden}
 
 <script>
 (function(){
-  var endpoint = 'https://gmap-shared-list-scraper.onrender.com/api/import-google-list';
+  var endpoint = 'https://gmap-scraper.sfcz9mskfz.workers.dev/api/import-google-list';
   var key = 'sapporo-trip-v43-shared-list-import-endpoint';
   try {
     var old = localStorage.getItem(key) || '';
-    if (!old || old === '/api/import-google-list') localStorage.setItem(key, endpoint);
+    if (!old || old === '/api/import-google-list' || old.indexOf('onrender.com') !== -1 || old.indexOf('gmap-shared-list-scraper') !== -1) localStorage.setItem(key, endpoint);
   } catch(e) {}
   var input = document.getElementById('importApiEndpoint');
   if (input && (!input.value || input.value === '/api/import-google-list')) input.value = endpoint;

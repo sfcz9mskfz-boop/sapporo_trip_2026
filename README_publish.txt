@@ -54,8 +54,8 @@ Update: v54 restores reliable import behavior:
 - Keeps the helper text below the section title removed.
 
 
-Update: v55 switches Google saved-list import to the self-hosted Render scraper:
-- Default endpoint is now https://gmap-shared-list-scraper.onrender.com/api/import-google-list
+Update: v57 switches Google saved-list import to the self-hosted Cloudflare Worker / ParseForge scraper:
+- Default endpoint is now https://gmap-scraper.sfcz9mskfz.workers.dev/api/import-google-list
 - The iPhone app no longer requires pasting the endpoint in the gear settings.
 - APIFY_TOKEN / APIFY_ACTOR_ID is no longer needed for the app import path.
-- If import is slow on the free Render plan, open /health once to wake the backend, then try again.
+- If import is slow on the free Cloudflare Worker / ParseForge plan, open /health once to wake the backend, then try again.
