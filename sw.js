@@ -1,1 +1,1 @@
-const CACHE = 'sapporo-trip-v54-sync-import-fallback';
+const CACHE = 'sapporo-trip-v58-reorder-walk-carousel';

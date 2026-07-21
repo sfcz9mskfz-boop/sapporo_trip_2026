@@ -1063,6 +1063,45 @@ html.fx-popup-open, body.fx-popup-open{overflow:hidden}
   line-height:1.35!important;
 }
 
+/* v58: touch-friendly itinerary reordering + 3-up walking-radius recommendations */
+.stop-card{position:relative;padding-right:54px}
+.stop-drag-handle{
+  position:absolute;top:10px;right:10px;z-index:3;width:38px;height:38px;
+  display:flex;align-items:center;justify-content:center;border:1px solid rgba(99,102,241,.16);
+  border-radius:13px;background:rgba(255,255,255,.92);color:#64748b;font-size:20px;
+  font-weight:900;line-height:1;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;
+  box-shadow:0 5px 14px rgba(71,85,105,.08);-webkit-tap-highlight-color:transparent
+}
+.stop-drag-handle:active{cursor:grabbing;background:#eef2ff;color:#4f46e5}
+.stop-drag-handle:focus-visible{outline:3px solid rgba(99,102,241,.22);outline-offset:2px}
+.stop-card.is-dragging{opacity:.76;transform:scale(.992);box-shadow:0 18px 38px rgba(79,70,229,.18);border-color:rgba(99,102,241,.34)}
+.stop-card.drag-target-before{box-shadow:inset 0 3px 0 #6366f1,0 10px 28px rgba(90,111,150,.08)}
+.stop-card.drag-target-after{box-shadow:inset 0 -3px 0 #6366f1,0 10px 28px rgba(90,111,150,.08)}
+body.itinerary-dragging{cursor:grabbing;user-select:none;-webkit-user-select:none}
+.reorder-live{position:fixed;left:-9999px;width:1px;height:1px;overflow:hidden}
+
+.saved-list-nearby-v58 .saved-list-nearby-title small{color:#0f766e}
+.saved-rec-body{padding:0 9px 10px;display:flex;flex-direction:column;gap:8px}
+.saved-rec-filters{display:flex;gap:6px;overflow-x:auto;padding:2px 0 1px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.saved-rec-filters::-webkit-scrollbar{display:none}
+.saved-rec-filter{flex:0 0 auto;min-height:30px;padding:5px 9px;border:1px solid rgba(100,116,139,.16);border-radius:999px;background:#fff;color:#64748b;font:inherit;font-size:10.5px;font-weight:900;white-space:nowrap;cursor:pointer}
+.saved-rec-filter.is-active{background:#0f172a;color:#fff;border-color:#0f172a}
+.saved-rec-carousel{display:grid;grid-template-columns:34px minmax(0,1fr) 34px;gap:7px;align-items:center}
+.saved-rec-arrow{width:34px;height:42px;border:1px solid rgba(99,102,241,.16);border-radius:13px;background:#fff;color:#4f46e5;font-size:22px;font-weight:800;cursor:pointer;box-shadow:0 4px 12px rgba(15,23,42,.04);-webkit-tap-highlight-color:transparent}
+.saved-rec-arrow:disabled{opacity:.28;cursor:default}
+.saved-rec-page{min-width:0;display:flex;flex-direction:column;gap:6px}
+.saved-rec-page .saved-list-place{min-height:48px}
+.saved-rec-page-status{display:flex;align-items:center;justify-content:space-between;gap:8px;color:#64748b;font-size:10.5px;font-weight:850;line-height:1.35}
+.saved-rec-page-status strong{color:#0f766e;font-size:10.5px;white-space:nowrap}
+.saved-rec-walk{display:inline-flex;align-items:center;gap:3px;color:#0f766e;font-weight:950;white-space:nowrap}
+.saved-rec-empty{padding:12px;border-radius:13px;background:#f8fafc;color:#94a3b8;text-align:center;font-size:11px;font-weight:800}
+@media(max-width:430px){
+  .stop-card{padding-right:50px!important}
+  .stop-drag-handle{top:9px;right:9px;width:36px;height:36px;border-radius:12px;font-size:19px}
+  .saved-rec-body{padding-left:7px;padding-right:7px}
+  .saved-rec-carousel{grid-template-columns:31px minmax(0,1fr) 31px;gap:5px}
+  .saved-rec-arrow{width:31px;height:40px;border-radius:12px;font-size:20px}
+}
 </style>
 </head>
 <body>
@@ -4322,6 +4361,7 @@ html.fx-popup-open, body.fx-popup-open{overflow:hidden}
       '<span class="saved-list-place-open">Maps</span>';
     a.querySelector('.saved-list-place-name').textContent = place.name || (c ? '지도 좌표 위치' : 'Google Maps');
     var meta = (place.sourceListName || 'Saved list');
+    if (Number.isFinite(Number(place._walkMinutes))) meta = '🚶 ~' + Number(place._walkMinutes) + ' min · ' + meta;
     if (place.rating) meta += ' · ★ ' + place.rating;
     if (place.address) meta += ' · ' + place.address;
     a.querySelector('.saved-list-place-source').textContent = meta;
@@ -4331,53 +4371,124 @@ html.fx-popup-open, body.fx-popup-open{overflow:hidden}
     clearSavedListNearby();
     var lists = readSavedLists();
     var byCard = new Map();
+    var cards = allStopCardsForMatching().filter(function(info){ return !!info.coord; });
+    var WALK_SPEED_KMH = 4.8;
+    var STREET_FACTOR = 1.25;
+    var MAX_WALK_MINUTES = 25;
     lists.forEach(function(list){
       (list.places || []).forEach(function(place){
         if (!place || (!place.name && !place.url)) return;
+        var pCoord = placeCoord(place);
+        if (!pCoord) return; // Distance cannot be verified without coordinates.
         place.sourceListName = list.name || place.sourceListName || 'Saved list';
         place.category = place.category || categorizePlace(place);
-        var card = inferCardForPlace(place);
-        if (!card) return;
-        if (!byCard.has(card)) byCard.set(card, []);
-        byCard.get(card).push(place);
+        cards.forEach(function(info){
+          var airKm = savedRouteKm(pCoord, info.coord);
+          var walkMinutes = Math.ceil((airKm * STREET_FACTOR / WALK_SPEED_KMH) * 60);
+          if (!Number.isFinite(walkMinutes) || walkMinutes > MAX_WALK_MINUTES) return;
+          var matched = Object.assign({}, place, {
+            _walkMinutes: Math.max(1, walkMinutes),
+            _walkKm: airKm * STREET_FACTOR
+          });
+          if (!byCard.has(info.card)) byCard.set(info.card, []);
+          byCard.get(info.card).push(matched);
+        });
       });
     });
     byCard.forEach(function(places, card){
       places = dedupePlacesNoHardCap ? dedupePlacesNoHardCap(places) : dedupePlaces(places);
       if (!places.length) return;
-      // Sort by category priority, then name for stable route-friendly display.
+      // Nearest walking estimate first, then rating/category for a useful stable order.
       var priority = {food:1, cafe:2, sight:3, shopping:4, transport:5, hotel:6, map:7, etc:8};
       places.sort(function(a,b){
         var ac = (a.category || categorizePlace(a)).id || 'etc';
         var bc = (b.category || categorizePlace(b)).id || 'etc';
-        return (priority[ac] || 9) - (priority[bc] || 9) || String(a.name || '').localeCompare(String(b.name || ''));
+        return Number(a._walkMinutes || 99) - Number(b._walkMinutes || 99) ||
+          Number(b.rating || 0) - Number(a.rating || 0) ||
+          (priority[ac] || 9) - (priority[bc] || 9) ||
+          String(a.name || '').localeCompare(String(b.name || ''));
       });
       var details = document.createElement('details');
-      details.className = 'saved-list-nearby saved-list-nearby-v47';
+      details.className = 'saved-list-nearby saved-list-nearby-v47 saved-list-nearby-v58';
       details.innerHTML =
         '<summary><div class="saved-list-nearby-trigger">' +
         '<span class="saved-list-nearby-pin">★</span>' +
-        '<span class="saved-list-nearby-title"><span class="lang lang-ko">저장 리스트 추천</span><span class="lang lang-en">Saved list picks</span><small><span class="lang lang-ko">일정 동선 기준</span><span class="lang lang-en">route matched</span></small></span>' +
+        '<span class="saved-list-nearby-title"><span class="lang lang-ko">저장 리스트 추천</span><span class="lang lang-en">Saved list picks</span><small><span class="lang lang-ko">도보 25분 이내 · 3개씩 보기</span><span class="lang lang-en">within a 25-min walk · 3 at a time</span></small></span>' +
         '<span class="saved-list-nearby-count">' + places.length + '</span>' +
-        '</div></summary><div class="saved-list-nearby-list grouped"></div>';
-      var listEl = details.querySelector('.saved-list-nearby-list');
+        '</div></summary><div class="saved-rec-body">' +
+        '<div class="saved-rec-filters" role="toolbar" aria-label="추천 장소 분류 / Recommendation categories"></div>' +
+        '<div class="saved-rec-carousel">' +
+        '<button type="button" class="saved-rec-arrow saved-rec-prev" aria-label="이전 추천 장소 / Previous recommendations">‹</button>' +
+        '<div class="saved-rec-page"></div>' +
+        '<button type="button" class="saved-rec-arrow saved-rec-next" aria-label="다음 추천 장소 / Next recommendations">›</button>' +
+        '</div><div class="saved-rec-page-status"><span></span><strong><span class="lang lang-ko">도보 25분 이내</span><span class="lang lang-en">≤ 25 min walk</span></strong></div>' +
+        '</div>';
       var groups = groupSavedPlacesByCategory(places);
       var order = ['food','cafe','sight','shopping','transport','hotel','map','etc'];
+      var filters = details.querySelector('.saved-rec-filters');
+      var allButton = document.createElement('button');
+      allButton.type = 'button';
+      allButton.className = 'saved-rec-filter is-active';
+      allButton.setAttribute('data-rec-category','all');
+      allButton.innerHTML = '<span class="lang lang-ko">전체 ' + places.length + '</span><span class="lang lang-en">All ' + places.length + '</span>';
+      filters.appendChild(allButton);
       order.forEach(function(id){
         var group = groups[id];
         if (!group || !group.places.length) return;
-        var section = document.createElement('details');
-        section.className = 'saved-list-nearby-cat cat-' + id;
-        section.open = id === 'food' || id === 'cafe' || id === 'sight';
-        section.innerHTML =
-          '<summary>' + categoryTagHtml(group.cat) + '<span class="saved-list-nearby-cat-count">' + group.places.length + '</span></summary>' +
-          '<div class="saved-list-nearby-cat-items"></div>';
-        var items = section.querySelector('.saved-list-nearby-cat-items');
-        group.places.forEach(function(place){
-          items.appendChild(savedPlaceLinkElement(place));
-        });
-        listEl.appendChild(section);
+        var button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'saved-rec-filter';
+        button.setAttribute('data-rec-category', id);
+        button.innerHTML = '<span class="lang lang-ko">' + (group.cat.ko || '기타') + ' ' + group.places.length + '</span>' +
+          '<span class="lang lang-en">' + (group.cat.en || 'Other') + ' ' + group.places.length + '</span>';
+        filters.appendChild(button);
       });
+      var pageSize = 3;
+      var activeCategory = 'all';
+      var pageIndex = 0;
+      function activePlaces(){
+        if (activeCategory === 'all') return places;
+        return places.filter(function(p){ return ((p.category || categorizePlace(p)).id || 'etc') === activeCategory; });
+      }
+      function paintPage(){
+        var filtered = activePlaces();
+        var totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+        pageIndex = Math.max(0, Math.min(pageIndex, totalPages - 1));
+        var start = pageIndex * pageSize;
+        var visible = filtered.slice(start, start + pageSize);
+        var page = details.querySelector('.saved-rec-page');
+        page.innerHTML = '';
+        visible.forEach(function(place){ page.appendChild(savedPlaceLinkElement(place)); });
+        if (!visible.length) page.innerHTML = '<div class="saved-rec-empty"><span class="lang lang-ko">해당 분류의 장소가 없어요.</span><span class="lang lang-en">No places in this category.</span></div>';
+        var prev = details.querySelector('.saved-rec-prev');
+        var next = details.querySelector('.saved-rec-next');
+        prev.disabled = totalPages <= 1;
+        next.disabled = totalPages <= 1;
+        var status = details.querySelector('.saved-rec-page-status span');
+        var end = Math.min(start + visible.length, filtered.length);
+        status.textContent = filtered.length ? (start + 1) + '–' + end + ' / ' + filtered.length : '0 / 0';
+      }
+      filters.addEventListener('click', function(event){
+        var button = event.target.closest ? event.target.closest('[data-rec-category]') : null;
+        if (!button) return;
+        activeCategory = button.getAttribute('data-rec-category') || 'all';
+        pageIndex = 0;
+        Array.prototype.forEach.call(filters.querySelectorAll('.saved-rec-filter'), function(b){ b.classList.toggle('is-active', b === button); });
+        paintPage();
+      });
+      details.querySelector('.saved-rec-prev').addEventListener('click', function(){
+        var length = activePlaces().length;
+        var totalPages = Math.max(1, Math.ceil(length / pageSize));
+        pageIndex = (pageIndex - 1 + totalPages) % totalPages;
+        paintPage();
+      });
+      details.querySelector('.saved-rec-next').addEventListener('click', function(){
+        var length = activePlaces().length;
+        var totalPages = Math.max(1, Math.ceil(length / pageSize));
+        pageIndex = (pageIndex + 1) % totalPages;
+        paintPage();
+      });
+      paintPage();
       var nearby = card.querySelector('.nearby-recs');
       if (nearby) nearby.insertAdjacentElement('afterend', details);
       else card.querySelector('.stop-main').appendChild(details);
@@ -5341,6 +5452,141 @@ html.fx-popup-open, body.fx-popup-open{overflow:hidden}
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     window.addEventListener('load', function(){ navigator.serviceWorker.register('./sw.js').catch(function(){}); });
   }
+})();
+</script>
+
+<script>
+(function(){
+  /* v58: itinerary order is local to this browser/PWA and survives refreshes. */
+  var ORDER_KEY = 'sapporo-trip-v58-itinerary-order';
+  var live = document.createElement('div');
+  live.className = 'reorder-live';
+  live.setAttribute('aria-live','polite');
+  document.body.appendChild(live);
+
+  function hashText(text){
+    var h = 2166136261;
+    for (var i=0;i<text.length;i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return (h >>> 0).toString(36);
+  }
+  function dayKey(list){
+    var panel = list.closest('.day-panel');
+    var match = panel ? String(panel.className || '').match(/day-(\d+)/) : null;
+    return match ? 'day-' + match[1] : 'day-unknown';
+  }
+  function readOrders(){
+    try { var data = JSON.parse(localStorage.getItem(ORDER_KEY) || '{}'); return data && typeof data === 'object' ? data : {}; }
+    catch(e) { return {}; }
+  }
+  function writeOrder(list){
+    var orders = readOrders();
+    orders[dayKey(list)] = Array.prototype.map.call(list.querySelectorAll(':scope > .stop-card'), function(card){ return card.dataset.sortId; });
+    try { localStorage.setItem(ORDER_KEY, JSON.stringify(orders)); } catch(e) {}
+  }
+  function updateNumbers(list){
+    Array.prototype.forEach.call(list.querySelectorAll(':scope > .stop-card'), function(card, index){
+      var badge = card.querySelector('.stop-index');
+      if (badge && /^\d+$/.test(String(badge.textContent || '').trim())) badge.textContent = String(index + 1);
+      var handle = card.querySelector('.stop-drag-handle');
+      if (handle) handle.setAttribute('aria-label', '일정 ' + (index + 1) + ' 순서 변경 / Reorder itinerary item ' + (index + 1));
+    });
+  }
+  function restoreOrder(list){
+    var saved = readOrders()[dayKey(list)];
+    if (!Array.isArray(saved) || !saved.length) { updateNumbers(list); return; }
+    var cards = {};
+    Array.prototype.forEach.call(list.querySelectorAll(':scope > .stop-card'), function(card){ cards[card.dataset.sortId] = card; });
+    saved.forEach(function(id){ if (cards[id]) { list.appendChild(cards[id]); delete cards[id]; } });
+    Object.keys(cards).forEach(function(id){ list.appendChild(cards[id]); });
+    updateNumbers(list);
+  }
+  function clearTargets(list){
+    Array.prototype.forEach.call(list.querySelectorAll('.drag-target-before,.drag-target-after'), function(card){
+      card.classList.remove('drag-target-before','drag-target-after');
+    });
+  }
+  function announce(card, list){
+    var title = card.querySelector('h3');
+    var cards = Array.prototype.slice.call(list.querySelectorAll(':scope > .stop-card'));
+    live.textContent = (title ? title.textContent.trim() : '일정') + ' · ' + (cards.indexOf(card) + 1) + '번째로 이동 / moved to position ' + (cards.indexOf(card) + 1);
+  }
+  function moveByKeyboard(card, direction){
+    var list = card.parentElement;
+    var sibling = direction < 0 ? card.previousElementSibling : card.nextElementSibling;
+    if (!sibling || !sibling.classList.contains('stop-card')) return;
+    if (direction < 0) list.insertBefore(card, sibling);
+    else list.insertBefore(sibling, card);
+    writeOrder(list);
+    updateNumbers(list);
+    announce(card, list);
+    card.querySelector('.stop-drag-handle').focus();
+  }
+  function bindHandle(card, handle){
+    var state = null;
+    handle.addEventListener('keydown', function(event){
+      if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') { event.preventDefault(); moveByKeyboard(card, -1); }
+      if (event.key === 'ArrowDown' || event.key === 'ArrowRight') { event.preventDefault(); moveByKeyboard(card, 1); }
+    });
+    handle.addEventListener('pointerdown', function(event){
+      if (event.button != null && event.button !== 0) return;
+      state = {pointerId:event.pointerId, startY:event.clientY, list:card.parentElement, moved:false};
+      try { handle.setPointerCapture(event.pointerId); } catch(e) {}
+      event.preventDefault();
+    });
+    handle.addEventListener('pointermove', function(event){
+      if (!state || state.pointerId !== event.pointerId) return;
+      if (!state.moved && Math.abs(event.clientY - state.startY) < 5) return;
+      state.moved = true;
+      card.classList.add('is-dragging');
+      document.body.classList.add('itinerary-dragging');
+      clearTargets(state.list);
+      var under = document.elementFromPoint(event.clientX, event.clientY);
+      var target = under && under.closest ? under.closest('.stop-card') : null;
+      if (!target || target === card || target.parentElement !== state.list) return;
+      var rect = target.getBoundingClientRect();
+      var before = event.clientY < rect.top + rect.height / 2;
+      target.classList.add(before ? 'drag-target-before' : 'drag-target-after');
+      if (before) state.list.insertBefore(card, target);
+      else state.list.insertBefore(card, target.nextElementSibling);
+      if (event.clientY < 88) window.scrollBy(0, -12);
+      else if (event.clientY > window.innerHeight - 88) window.scrollBy(0, 12);
+      event.preventDefault();
+    });
+    function finish(event){
+      if (!state || (event && state.pointerId !== event.pointerId)) return;
+      var list = state.list;
+      var moved = state.moved;
+      state = null;
+      card.classList.remove('is-dragging');
+      document.body.classList.remove('itinerary-dragging');
+      clearTargets(list);
+      if (moved) {
+        writeOrder(list);
+        updateNumbers(list);
+        announce(card, list);
+      }
+    }
+    handle.addEventListener('pointerup', finish);
+    handle.addEventListener('pointercancel', finish);
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('.stop-list'), function(list){
+    Array.prototype.forEach.call(list.querySelectorAll(':scope > .stop-card'), function(card, index){
+      var panel = list.closest('.day-panel');
+      var day = panel && String(panel.className || '').match(/day-(\d+)/);
+      var title = card.querySelector('h3');
+      var seed = (day ? day[1] : 'x') + '|' + index + '|' + (title ? title.textContent.trim() : card.textContent.slice(0,80));
+      card.dataset.sortId = 'stop-' + hashText(seed);
+      if (!card.querySelector('.stop-drag-handle')) {
+        var handle = document.createElement('button');
+        handle.type = 'button';
+        handle.className = 'stop-drag-handle';
+        handle.innerHTML = '<span aria-hidden="true">⠿</span>';
+        card.appendChild(handle);
+        bindHandle(card, handle);
+      }
+    });
+    restoreOrder(list);
+  });
 })();
 </script>
 
